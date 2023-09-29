@@ -3,6 +3,10 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.llms import CTransformers
 from langchain.chains import RetrievalQA #This is just a retrieval chain, for chat history use conversational retrieval chain
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory  import ConversationBufferMemory
+
+from typing import Dict, Any
 
 # LLMChain: This chain uses a Language Model for generating responses to queries or prompts. 
 # It can be used for various tasks such as chatbots, summarization, and more
@@ -19,6 +23,10 @@ from langchain.chains import RetrievalQA #This is just a retrieval chain, for ch
 # RetrievalQAChain: retrieves the vector based on the prompt
 # StuffDocumentsChain: Converts the vector into the answer
 # LLMChain: Uses the answer to generate a response to the prompt
+
+class AnswerConversationBufferMemory(ConversationBufferMemory):
+    def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, str]) -> None:
+        return super(AnswerConversationBufferMemory, self).save_context(inputs,{'response': outputs['answer']})
 
 
 DB_FAISS_PATH = "vectorstores/db_faiss"
@@ -39,22 +47,25 @@ def setCustomPrompt():
 
 def loadLLM():
     llm = CTransformers(
-        model="llama-2-7b-chat.ggmlv3.q8_0.bin", model_type="llama", max_new_tokens=512, temperature=0.5
+        model="llama-2-7b-chat.ggmlv3.q8_0.bin", model_type="llama", max_new_tokens=512, temperature=0.2
     )
     return llm
 
 def retrievalQAChain(llm, prompt, db):
     #Look into the different available chain_type
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm, chain_type="stuff", retriever=db.as_retriever(search_kwargs={"k": 2}), return_source_documents = True, 
-        chain_type_kwargs={"prompt": prompt}
-    )
+    memory = AnswerConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    # qa_chain = RetrievalQA.from_chain_type(
+    #     llm=llm, chain_type="stuff", retriever=db.as_retriever(search_kwargs={"k": 2}), return_source_documents = True, 
+    #     chain_type_kwargs={"prompt": prompt, "memory": ConversationBufferMemory(memory_key="history", input_key="question")}
+    # )
+    qa_chain = ConversationalRetrievalChain.from_llm(llm=llm, chain_type="stuff", retriever=db.as_retriever(search_kwargs={"k": 2}), 
+    memory=memory, combine_docs_chain_kwargs={"prompt": prompt}, return_source_documents = True)
     #search_kwargs={"k": 2} means 2 searches
     #return_source_documents = True means don't use base knowledge use only knowledge we provided
     return qa_chain
 
 def qaBot():
-    #I think you have to do {"device": "cuda"} in order to use GPU
+    #I think you have to do {"device": "cuda"} in order to use GPU, need NVIDIA GPU and need to have driver installed
     embeddings = HuggingFaceEmbeddings(model_name = 'sentence-transformers/all-MiniLM-L6-v2', model_kwargs={"device": "cpu"})
     db = FAISS.load_local(DB_FAISS_PATH, embeddings)
 
@@ -66,7 +77,8 @@ def qaBot():
 
 def finalResult(query):
     qa_result = qaBot()
-    response = qa_result({"query": query})
+    # Will be query if using RetrievalQA
+    response = qa_result({"question": query})
     print()
     return response
 
@@ -78,5 +90,8 @@ if __name__ == "__main__":
             break
         print()
         print(finalResult(prompt), end="\n\n")
+
+
+# Which counties does Catholic Charities Dispute Resolution Center serve?
 
 
