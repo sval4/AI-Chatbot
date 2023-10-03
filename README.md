@@ -1,4 +1,4 @@
-# Chatbot
+# AI-Chatbot
 A conversational chatbot that uses llama-2-7b-chat.ggmlv3.q8_0.bin model, langchain, and FAISS to read info from passed in URLs and answers questions based on the info it has learned from the URLs.
 
 ## How to Run:
