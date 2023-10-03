@@ -7,6 +7,7 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory  import ConversationBufferMemory
 
 from typing import Dict, Any
+import chainlit as cl
 
 # LLMChain: This chain uses a Language Model for generating responses to queries or prompts. 
 # It can be used for various tasks such as chatbots, summarization, and more
@@ -83,15 +84,39 @@ def finalResult(query):
     return response
 
 
-if __name__ == "__main__":
-    while True:
-        prompt = input("Please enter your question (or 'q' to quit): ")
-        if prompt.lower() == "q":
-            break
-        print()
-        print(finalResult(prompt), end="\n\n")
+@cl.on_chat_start
+async def start():
+    bot = qaBot()
+    await cl.Message(content="Hello, Welcome to the ChatBot. What is your question?").send()
+    cl.user_session.set("chatbot", bot)
+
+@cl.on_message
+async def main(message):
+    bot = cl.user_session.get("chatbot")
+    cb = cl.AsyncLangchainCallbackHandler(stream_final_answer=True, answer_prefix_tokens=["FINAL", "ANSWER"])
+    result = await bot.acall(message, callbacks=[cb])
+    answer = result["answer"]
+    sources = result["source_documents"]
+    if sources:
+        answer += f"\n\nSources:" + str(sources)
+        cb.answer_reached=True
+    else:
+        answer += f"\n\nNo Sources Found"
+        cb.answer_reached=True
+
+    await cl.Message(content=answer).send()
 
 
-# Which counties does Catholic Charities Dispute Resolution Center serve?
+#This is how to run with chainlit: chainlit run model.py -w
+
+# if __name__ == "__main__":
+#     while True:
+#         prompt = input("Please enter your question (or 'q' to quit): ")
+#         if prompt.lower() == "q":
+#             break
+#         print()
+#         print(finalResult(prompt), end="\n\n")
+
+
 
 
