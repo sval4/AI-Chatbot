@@ -10,6 +10,10 @@ from bs4 import BeautifulSoup
 import time
 import xml.etree.ElementTree as ET
 
+DEVICE = "cpu"
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+
 DB_FAISS_PATH = "vectorstores/db_faiss"
 
 def listOfCenters(browser, headers):
@@ -50,11 +54,12 @@ def createVectorDB():
 
     loaders=UnstructuredURLLoader(urls=URLs, headers=headers)
     documents=loaders.load()
+    #doc = Document(page_content="text", metadata={"source": "url"})
 
     text_splitter = RecursiveCharacterTextSplitter(chunk_size = 500, chunk_overlap = 50)
     texts = text_splitter.split_documents(documents)
     #I think you have to do {"device": "cuda"} in order to use GPU
-    embeddings = HuggingFaceEmbeddings(model_name = 'sentence-transformers/all-MiniLM-L6-v2', model_kwargs={"device": "cpu"})
+    embeddings = HuggingFaceEmbeddings(model_name = 'sentence-transformers/all-MiniLM-L6-v2', model_kwargs={"device": DEVICE})
 
     db = FAISS.from_documents(texts, embeddings)
     db.save_local(DB_FAISS_PATH)
