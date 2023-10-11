@@ -4,11 +4,13 @@ from langchain.vectorstores import FAISS
 from langchain.llms import CTransformers
 from langchain.chains import RetrievalQA #This is just a retrieval chain, for chat history use conversational retrieval chain
 from langchain.chains import ConversationalRetrievalChain
-from langchain.memory  import ConversationBufferMemory
+from langchain.memory  import ConversationTokenBufferMemory
 
 from typing import Dict, Any
 import chainlit as cl
 import torch
+
+from flask import Flask, render_template, request
 
 # LLMChain: This chain uses a Language Model for generating responses to queries or prompts. 
 # It can be used for various tasks such as chatbots, summarization, and more
@@ -34,11 +36,12 @@ DB_FAISS_PATH = "vectorstores/db_faiss"
 
 custom_prompt_template = """Use the following pieces of information to answer the user's question.
 If you don't know the answer, please just say that you don't know the answer, don't try to make up an answer.
-Be empathetic, sympathetic, and kind in your responses. Only use personal pronouns when talking about
-new york state dispute resolution association.
+Be empathetic, sympathetic, and kind in your responses.
 
 
-Context: {context}
+Context: {chat_history} 
+{context}
+
 Question: {question}
 
 Only returns the helpful answer below and nothing else.
@@ -57,7 +60,7 @@ CONDENSE_QUESTION_PROMPT_CUSTOM = PromptTemplate(template=custom_template, input
 
 
 def setCustomPrompt():
-    prompt = PromptTemplate(template=custom_prompt_template, input_variables=["context", "question"])
+    prompt = PromptTemplate(template=custom_prompt_template, input_variables=["context", "question", "chat_history"])
     return prompt
 
 def loadLLM():
@@ -66,21 +69,30 @@ def loadLLM():
     return llm
 
 def retrievalQAChain(llm, prompt, db):
-    #Look into the different available chain_type
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
+    # memory = ConversationTokenBufferMemory(llm=llm, memory_key="chat_history", return_messages=True, input_key="question", max_token_limit=512)
     # qa_chain = RetrievalQA.from_chain_type(
-    #     llm=llm, chain_type="stuff", retriever=db.as_retriever(search_kwargs={"k": 2}), return_source_documents = True, 
-    #     chain_type_kwargs={"prompt": prompt, "memory": ConversationBufferMemory(memory_key="history", input_key="question")}
+    #     llm=llm, chain_type="stuff", retriever=db.as_retriever(search_kwargs={"k": 1}), return_source_documents = True, 
+    #     chain_type_kwargs={
+    #         "verbose": False,
+    #         "prompt": prompt,
+    #         "memory": memory,
+    #     }, verbose=True
     # )
-    qa_chain = ConversationalRetrievalChain.from_llm(llm=llm, chain_type="stuff", retriever=db.as_retriever(search_kwargs={"k": 2}), 
-    memory=memory, combine_docs_chain_kwargs={"prompt": prompt}, return_source_documents = True, verbose=True, rephrase_question=False,
-    condense_question_prompt=CONDENSE_QUESTION_PROMPT_CUSTOM)
+    qa_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm, 
+        chain_type="stuff", 
+        retriever= db.as_retriever(search_kwargs={"k": 1}), 
+        combine_docs_chain_kwargs={"prompt": prompt}, 
+        return_source_documents = True, 
+        verbose=True,
+        # condense_question_prompt=CONDENSE_QUESTION_PROMPT_CUSTOM,
+        rephrase_question = False
+        )
     #search_kwargs={"k": 2} means 2 searches
     #return_source_documents = True means don't use base knowledge use only knowledge we provided
     return qa_chain
 
 def qaBot():
-    #I think you have to do {"device": "cuda"} in order to use GPU, need NVIDIA GPU and need to have driver installed
     embeddings = HuggingFaceEmbeddings(model_name = 'sentence-transformers/all-MiniLM-L6-v2', model_kwargs={"device": DEVICE})
     db = FAISS.load_local(DB_FAISS_PATH, embeddings)
 
@@ -92,8 +104,9 @@ def qaBot():
 
 def finalResult(query):
     qa_result = qaBot()
-    # Will be query if using RetrievalQA
-    response = qa_result({"question": query})
+    chat_history = []
+    # Will be query if using RetrievalQA, question for ConversationalQA
+    response = qa_result({'chat_history': chat_history, 'question': query})
     print()
     return response
 
@@ -108,7 +121,9 @@ async def start():
 async def main(message):
     bot = cl.user_session.get("chatbot")
     cb = cl.AsyncLangchainCallbackHandler(stream_final_answer=True, answer_prefix_tokens=["FINAL", "ANSWER"])
-    result = await bot.acall(message, callbacks=[cb])
+    chat_history = []
+    result = await bot.acall({'chat_history': chat_history, 'question': message}, callbacks=[cb])
+    # Will be result["result"] if using RetrievalQA result["answer"] for ConversationalQA
     answer = result["answer"]
     sources = result["source_documents"]
 
@@ -123,14 +138,18 @@ async def main(message):
 
 #This is how to run with chainlit: chainlit run model.py -w
 
-# if __name__ == "__main__":
-#     while True:
-#         prompt = input("Please enter your question (or 'q' to quit): ")
-#         if prompt.lower() == "q":
-#             break
-#         print()
-#         print(finalResult(prompt), end="\n\n")
+app = Flask(__name__)
+app.static_folder = "static"
 
+@app.route("/")
+def home():
+    return render_template("index.html")
 
+@app.route("/get")
+def get_bot_response():
+    prompt = request.args.get("msg")
+    answer = finalResult(prompt)
+    return [answer["answer"], answer["source_documents"][0].metadata["source"]]
 
-
+if __name__ == "__main__":
+    app.run(debug=True)
