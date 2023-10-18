@@ -41,7 +41,7 @@
     <form class="msger-inputarea">
       <input type="text" id="text-input" class="msger-input" id="textInput" placeholder="Enter your message...">
       <button type="submit" class="msger-send-btn">Send</button>
-      <button type="submit" class="msger-send-btn">Add</button>
+      <button type="submit" class="msger-send-btn" id="add-button">Add</button>
     </form>
   </section>
   <!-- partial -->
@@ -51,6 +51,7 @@
     const msgerForm = get(".msger-inputarea");
     const msgerInput = get(".msger-input");
     const msgerChat = get(".msger-chat");
+    const addButton = get("#add-button");
 
 
     // Icons made by Freepik from www.flaticon.com
@@ -58,6 +59,17 @@
     const PERSON_IMG = "../static/styles/human-pfp.jpeg";
     const BOT_NAME = "    ChatBot";
     const PERSON_NAME = "You";
+
+    addButton.addEventListener("click", event =>{
+      event.preventDefault();
+
+      const msgText = msgerInput.value;
+      if (!msgText) return;
+
+      msgerInput.disabled = true;
+      msgerInput.value = "";
+      botResponse2(msgText);
+    });
 
     msgerForm.addEventListener("submit", event => {
       event.preventDefault();
@@ -74,6 +86,7 @@
 
     function appendMessage(name, img, side, answer, source) {
       //   Simple solution for small apps
+      const sourceSection = source ? `<br><div class="msg-text">Source: <a href=${source} target="_blank">${source}</a></div>` : '';
       const msgHTML = `
 <div class="msg ${side}-msg">
   <div class="msg-img" style="background-image: url(${img});"></div>
@@ -85,8 +98,7 @@
     </div>
 
     <div class="msg-text">${answer}</div>
-    <br>
-    <div class="msg-text">Source: <a href=${source} target="_blank">${source}</a></div>
+    ${sourceSection}
   </div>
 </div>
 `;
@@ -133,6 +145,19 @@
       });
 
     }
+
+    function botResponse2(rawText) {
+      // Bot Response
+      $.get("/get2", { msg: rawText }).done(function (data) {
+        console.log(rawText);
+        console.log(data);
+        appendMessage(BOT_NAME, BOT_IMG, "left", data, "");
+
+        msgerInput.disabled = false;
+
+      });
+
+      }
 
 
     // Utils

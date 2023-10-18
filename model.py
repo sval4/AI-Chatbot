@@ -151,5 +151,9 @@ def get_bot_response():
     answer = finalResult(prompt)
     return [answer["answer"], answer["source_documents"][0].metadata["source"]]
 
+@app.route("/get2")
+def get_bot_response2():
+    return "Hello"
+
 if __name__ == "__main__":
     app.run(debug=True)
