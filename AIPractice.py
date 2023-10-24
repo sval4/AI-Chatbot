@@ -1,108 +1,139 @@
-from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoTokenizer, Trainer, TrainingArguments, DataCollatorForLanguageModeling, AutoConfig
-import torch
-from tokenizers import *
 import os
-import json
-from datasets import *
+import re
+from PyPDF2 import PdfReader
+import docx
+import torch
+from transformers import GPT2Tokenizer, GPT2LMHeadModel, TextDataset, DataCollatorForLanguageModeling, AutoTokenizer, AutoModelForCausalLM
+from transformers import Trainer, TrainingArguments
+
+def read_pdf(file_path):
+    with open(file_path, "rb") as file:
+        pdf_reader = PdfReader(file)
+        text = ""
+        for page_num in range(len(pdf_reader.pages)):
+            text += pdf_reader.pages[page_num].extract_text()
+    return text
+
+def read_word(file_path):
+    doc = docx.Document(file_path)
+    text = ""
+    for paragraph in doc.paragraphs:
+        text += paragraph.text + "\n"
+    return text
+
+def read_txt(file_path):
+    with open(file_path, "r") as file:
+        text = file.read()
+    return text
+
+def read_documents_from_directory(directory):
+    combined_text = ""
+    for filename in os.listdir(directory):
+        file_path = os.path.join(directory, filename)
+        if filename.endswith(".pdf"):
+            combined_text += read_pdf(file_path)
+        elif filename.endswith(".docx"):
+            combined_text += read_word(file_path)
+        elif filename.endswith(".txt"):
+            combined_text += read_txt(file_path)
+    return combined_text
 
 
-def encode_with_truncation(examples):
-  """Mapping function to tokenize the sentences passed with truncation"""
-  return tokenizer(examples["text"], truncation=True, padding="max_length",
-                   max_length=512, return_special_tokens_mask=True)
+def train_chatbot(directory, model_output_path, train_fraction=0.8):
+    # Read documents from the directory
+    combined_text = read_documents_from_directory(directory)
+    combined_text = re.sub(r'\n+', '\n', combined_text).strip()  # Remove excess newline characters
 
-# download and prepare cc_news dataset
-dataset = load_dataset("rotten_tomatoes", split="train")
+    # Split the text into training and validation sets
+    split_index = int(train_fraction * len(combined_text))
+    train_text = combined_text[:split_index]
+    val_text = combined_text[split_index:]
 
-# split the dataset into training (90%) and testing (10%)
-d = dataset.train_test_split(test_size=0.1)
-d["train"], d["test"]
+    # Save the training and validation data as text files
+    with open("train.txt", "w", encoding='utf-8') as f:
+        f.write(train_text)
+    with open("val.txt", "w", encoding='utf-8') as f:
+        f.write(val_text)
 
-for t in d["train"]["text"][:3]:
-  print(t)
-  print("="*50)
+    # Set up the tokenizer and model
+    tokenizer = AutoTokenizer.from_pretrained("gpt2") 
+    model = AutoModelForCausalLM.from_pretrained("gpt2")  
 
+    # Prepare the dataset
+    train_dataset = TextDataset(tokenizer=tokenizer, file_path="train.txt", block_size=128)
+    val_dataset = TextDataset(tokenizer=tokenizer, file_path="val.txt", block_size=128)
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
-# model_name = "facebook/bart-base"
-model_name = "microsoft/DialoGPT-small"
+    #Delete train.txt and val.txt
+    os.remove("train.txt")
+    os.remove("val.txt")
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-# model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name)
-
-# Set the padding token
-tokenizer.pad_token = tokenizer.eos_token
-
-
-# the encode function will depend on the truncate_longer_samples variable
-encode = encode_with_truncation
-# tokenizing the train dataset
-train_dataset = d["train"].map(encode, batched=True)
-# tokenizing the testing dataset
-test_dataset = d["test"].map(encode, batched=True)
-train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-test_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-
-training_args = TrainingArguments(
-    output_dir=model_name,          # output directory to where save model checkpoint
-    evaluation_strategy="steps",    # evaluate each `logging_steps` steps
-    overwrite_output_dir=True,      
-    num_train_epochs=10,            # number of training epochs, feel free to tweak
-    per_device_train_batch_size=10, # the training batch size, put it as high as your GPU memory fits
-    gradient_accumulation_steps=8,  # accumulating the gradients before updating the weights
-    per_device_eval_batch_size=64,  # evaluation batch size
-    logging_steps=1000,             # evaluate, log and save model checkpoints every 1000 step
-    save_steps=1000,
-    max_steps=5,
-    # load_best_model_at_end=True,  # whether to load the best model (in terms of loss) at the end of training
-    # save_total_limit=3,           # whether you don't have much space so you let only 3 model weights saved in the disk
-)
-
-
-data_collator = DataCollatorForLanguageModeling(tokenizer = tokenizer, mlm=False)
-
-# initialize the trainer and pass everything to it
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=test_dataset,
-    data_collator = data_collator,
-    tokenizer=tokenizer
-)
-
-# train the model
-trainer.train()
-
-model.save_pretrained("myModel")
-tokenizer.save_pretrained("myTokenizer")
-
-# tokenizer = AutoTokenizer.from_pretrained("myTokenizer")
-# model = AutoModelForSeq2SeqLM.from_pretrained("myModel")
-
-
-# chatting 5 times with greedy search
-for step in range(5):
-    # take user input
-    text = input(">> You:")
-    # encode the input and add end of string token
-    input_ids = tokenizer.encode(tokenizer.eos_token + text, return_tensors="pt")
-    # concatenate new user input with chat history (if there is)
-    bot_input_ids = torch.cat([chat_history_ids, input_ids], dim=-1) if step > 0 else input_ids
-    # generate a bot response
-    chat_history_ids_list = model.generate(
-        bot_input_ids,
-        max_length=1000,
-        do_sample=True,
-        top_p=0.95,
-        top_k=50,
-        temperature=0.75,
-        num_return_sequences=5,
-        pad_token_id=tokenizer.eos_token_id
+    # Set up the training arguments
+    training_args = TrainingArguments(
+        output_dir=model_output_path,
+        overwrite_output_dir=True,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
+        num_train_epochs=30,
+        save_steps=10_000,
+        save_total_limit=2,
     )
-    #print the outputs
-    for i in range(len(chat_history_ids_list)):
-      output = tokenizer.decode(chat_history_ids_list[i][bot_input_ids.shape[-1]:], skip_special_tokens=True)
-      print(f"DialoGPT {i}: {output}")
-    choice_index = int(input("Choose the response you want for the next input: "))
-    chat_history_ids = torch.unsqueeze(chat_history_ids_list[choice_index], dim=0)
+
+    # Train the model
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        data_collator=data_collator,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset,
+    )
+
+    trainer.train()
+    trainer.save_model(model_output_path)
+    
+    # Save the tokenizer
+    tokenizer.save_pretrained(model_output_path)
+
+def generate_response(model, tokenizer, prompt, max_length=100):
+    input_ids = tokenizer.encode(prompt, return_tensors="pt")
+    
+    # Create the attention mask and pad token id
+    #attention_mask means which tokens in input should be attended to and which should be ignored
+    attention_mask = torch.ones_like(input_ids) #torch.ones_like(input_ids) means all tokens in the input should be attended to
+    pad_token_id = tokenizer.eos_token_id #set the token used for padding to end-of-sequence id. model will ignore these tokens when processing
+
+    output = model.generate(
+        input_ids,
+        max_length=max_length,
+        num_return_sequences=1,
+        attention_mask=attention_mask,
+        pad_token_id=pad_token_id
+    )
+
+    return tokenizer.decode(output[0], skip_special_tokens=True)
+
+def main():
+    directory = "data"
+    model_output_path = "mymodel"
+
+    # Train the chatbot
+    shouldTrain = str(input("Do you want to train?[Y/N]"))
+    if(shouldTrain.lower() == "y"):
+        train_chatbot(directory, model_output_path)
+
+    # Load the fine-tuned model and tokenizer
+    model = GPT2LMHeadModel.from_pretrained(model_output_path)
+    tokenizer = GPT2Tokenizer.from_pretrained(model_output_path)
+
+    # Test the chatbot
+    while(True):
+        prompt = str(input("Enter your question (q to quit): "))
+        if prompt == "q":
+            break
+        response = generate_response(model, tokenizer, prompt)
+        print("Generated response:", response)
+        print()
+
+if __name__ == "__main__":
+    main()
+     
