@@ -10,7 +10,8 @@ from typing import Dict, Any
 import chainlit as cl
 import torch
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 
 # LLMChain: This chain uses a Language Model for generating responses to queries or prompts. 
 # It can be used for various tasks such as chatbots, summarization, and more
@@ -140,6 +141,7 @@ async def main(message):
 
 app = Flask(__name__)
 app.static_folder = "static"
+CORS(app)
 
 @app.route("/")
 def home():
@@ -149,11 +151,18 @@ def home():
 def get_bot_response():
     prompt = request.args.get("msg")
     answer = finalResult(prompt)
-    return [answer["answer"], answer["source_documents"][0].metadata["source"]]
+    data = {
+        "answer" : answer["answer"],
+        "source" : answer["source_documents"][0].metadata["source"]
+    }
+    return jsonify(data)
 
 @app.route("/get2")
 def get_bot_response2():
-    return "Hello"
+    data = {
+        "answer" : "Hello"
+    }
+    return data
 
 if __name__ == "__main__":
     app.run(debug=True)

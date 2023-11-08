@@ -131,33 +131,54 @@
     }
 
     function botResponse(rawText) {
-
-      // Bot Response
-      $.get("/get", { msg: rawText }).done(function (data) {
+    // Bot Response
+    fetch(`/get?msg=${encodeURIComponent(rawText)}`, {
+      method: "GET",
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Network response was not ok (Status: ${response.status})`);
+        }
+        return response.json();
+      })
+      .then((data) => {
         console.log(rawText);
         console.log(data);
-        const answer = data[0];
-        const source = data[1];
+        const answer = data["answer"];
+        const source = data["source"];
         appendMessage(BOT_NAME, BOT_IMG, "left", answer, source);
-
         msgerInput.disabled = false;
-
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        // You can handle specific errors or log more details here
       });
+  }
+  
+  
 
-    }
-
-    function botResponse2(rawText) {
-      // Bot Response
-      $.get("/get2", { msg: rawText }).done(function (data) {
+function botResponse2(rawText) {
+    // Bot Response
+    fetch(`/get2?msg=${encodeURIComponent(rawText)}`, {
+      method: "GET",
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Network response was not ok");
+        }
+        return response.json();
+      })
+      .then((data) => {
         console.log(rawText);
         console.log(data);
-        appendMessage(BOT_NAME, BOT_IMG, "left", data, "");
-
+        appendMessage(BOT_NAME, BOT_IMG, "left", data["answer"], "");
         msgerInput.disabled = false;
-
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+        // Handle errors here if needed
       });
-
-      }
+  }
 
 
     // Utils
