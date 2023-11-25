@@ -20,6 +20,21 @@ if torch.cuda.is_available():
     DEVICE = "cuda"
 
 DB_FAISS_PATH = "vectorstores/db_faiss"
+
+
+master_links = set() #Keep track of all links that have been added
+processed_links = set()
+
+current_base_link = ""
+
+# Define the user-agent header for the browser request
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+}
+
+# Create a browser object using MechanicalSoup
+browser = mechanicalsoup.StatefulBrowser()
+
 """
 Fetches all links within a given web page and appends them to the provided sets based on certain criteria.
 
@@ -35,7 +50,8 @@ level (int): Current level of depth in fetching links
 Returns:
 None
 """
-def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser, headers, level):
+def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser, headers, level, documentList):
+    global processed_links
     # Define the maximum level of page traversal
     max_level = 1
     delay = 2
@@ -53,13 +69,11 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
         if page.status_code == 404:
             setOfWrongLinks.add(url)  
             print(f"404 Not Found: {url}")  
-            setOfInsideLinks.remove(url)  
             return  
     except Exception as e:
         print(url) 
         print(f"{e}")  
         setOfWrongLinks.add(url) 
-        setOfInsideLinks.remove(url)  
         return 
 
     time.sleep(delay) 
@@ -75,6 +89,7 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
         # Format the URL link if necessary
         if href and href[-1] == "/":
             href = href[0:len(href)-1]
+            
 
         # Filter out specific types of URLs based on certain conditions
         if href and "http" in href:
@@ -94,36 +109,48 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
             else:
                 link = base_url + href
 
-            if link in setOfWrongLinks or link in setOfInsideLinks:
+            if link in setOfWrongLinks or link in setOfInsideLinks or current_base_link not in link:
                 continue
 
-            setOfInsideLinks.add(link)
-            print("URL: ", link)
+            if link and ".pdf" in link:
+                # Download the PDF content
+                response = requests.get(href)
+                with open("temp.pdf", "wb") as f:
+                    f.write(response.content)
+
+                # Read and extract text from the downloaded PDF
+                pdf_file = open("temp.pdf", "rb")
+                reader = PyPDF2.PdfReader(pdf_file)
+                text = ""
+                for num in range(len(reader.pages)):
+                    page = reader.pages[num]
+                    text += page.extract_text()
+
+                # Close and remove the temporary PDF file
+                pdf_file.close()
+                os.remove("temp.pdf")
+
+                # Append the extracted text as a Document object to the document list
+                documentList.append(Document(page_content=text.replace("\n", "").replace("\x00", "f"), metadata={"source": href}))
+                setOfInsideLinks.add(link)
+                continue
             
             # If the current traversal level is less than the maximum level, continue extracting links recursively
             if level < max_level:
-                getAllLinksInPage(base_url, link, setOfInsideLinks, setOfWrongLinks, browser, headers, level + 1)
+                getAllLinksInPage(base_url, link, setOfInsideLinks, setOfWrongLinks, browser, headers, level + 1, documentList)
+            setOfInsideLinks.add(link)
 
 
 
 def listOfCenters(browser, headers):
-    delay = 2
-    time.sleep(delay)
-
-    # Fetch the webpage content from the specified URL using MechanicalSoup
-    page = browser.get('https://www.nysdra.org/centers', headers=headers, timeout=5)
-    time.sleep(delay)
-
     listOfCenters = set()
     documentList = []
 
-    # Find all anchor elements on the webpage
-    links = page.soup.find_all('a')
-
     # Iterate through all found links
-    for link in links:
+    for link in master_links:
         # Get the 'href' attribute from each link
         href = link.get('href')
+
         
         # Check if the link points to a PDF file
         if href and ".pdf" in href:
@@ -148,37 +175,53 @@ def listOfCenters(browser, headers):
             documentList.append(Document(page_content=text.replace("\n", "").replace("\x00", "f"), metadata={"source": href}))
 
         # Check for other types of links excluding certain domains and resources
-        elif href and "http" in href and href.lower().find("nysdra") == -1 \
-        and href.lower().find("youtube") == -1 and href.lower().find("linkedin") == -1 and href.lower().find("map") == -1:
+        elif href and "http" in href:
+            if current_base_link not in href:
+                continue
             # Initialize sets for inside and wrong links
             setOfInsideLinks = set()
             setOfWrongLinks = set()
             setOfInsideLinks.add(href)
             
             # Fetch all links within the current link recursively using a helper function
-            getAllLinksInPage(href, href, setOfInsideLinks, setOfWrongLinks, browser, headers, 0)
+            getAllLinksInPage(href, href, setOfInsideLinks, setOfWrongLinks, browser, headers, 0, documentList)
             
             # Union of unique inside links with the overall set of centers
             listOfCenters = listOfCenters.union(setOfInsideLinks)
 
     # Return the list of unique center links and extracted documents
-    return (list(listOfCenters), documentList)
+    return (listOfCenters, documentList)
 
 
-def createVectorDB():
-    # Define the user-agent header for the browser request
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
-    }
+def addLink(link):
+    global master_links
+    try:
+        page = browser.get(link, headers=headers, timeout=5)
+    except Exception as e:
+        print("Invalid URL")
+        return False
+    # Find all anchor elements on the webpage
+    links = page.soup.find_all('a')
+    links += page.soup.find_all('link')
+    for link in links:
+        master_links.add(link)
+    master_links = master_links.difference(processed_links)
+    return True
 
-    # Create a browser object using MechanicalSoup
-    browser = mechanicalsoup.StatefulBrowser()
 
+def createVectorDB(link):
+    global current_base_link
+    left = link.find("://")
+    right = link.rfind("/")
+    if right == -1:
+        current_base_link = link[left + 3:]
+    else:
+        current_base_link = link[left + 3: right]
     # Fetch information on centers from the specified website
     infoTuple = listOfCenters(browser, headers)
 
     # Extract URLs and PDF documents from the fetched information tuple
-    URLs = infoTuple[0]
+    URLs = link(infoTuple[0].union(processed_links))
     pdfDocumentList = infoTuple[1]
 
     # Display the extracted URLs
@@ -207,7 +250,3 @@ def createVectorDB():
 
     # Save the FAISS database locally
     db.save_local(DB_FAISS_PATH)
-
-
-if __name__ == "__main__":
-    createVectorDB()

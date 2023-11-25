@@ -39,9 +39,10 @@
     </main>
 
     <form class="msger-inputarea">
-      <input type="text" id="text-input" class="msger-input" id="textInput" placeholder="Enter your message...">
+      <input type="text" id="text-input" class="msger-input" id="textInput" placeholder="Enter your message..." autocomplete="off">
       <button type="submit" class="msger-send-btn">Send</button>
       <button type="submit" class="msger-send-btn" id="add-button">Add</button>
+      <div class="loader"></div>
     </form>
   </section>
   <!-- partial -->
@@ -52,6 +53,8 @@
     const msgerInput = get(".msger-input");
     const msgerChat = get(".msger-chat");
     const addButton = get("#add-button");
+    const msgerSend = get(".msger-send-btn");
+    const loader = get(".loader");
 
 
     // Icons made by Freepik from www.flaticon.com
@@ -66,8 +69,16 @@
       const msgText = msgerInput.value;
       if (!msgText) return;
 
+      appendMessageHuman(PERSON_NAME, PERSON_IMG, "right", msgText);
       msgerInput.disabled = true;
+      msgerSend.style.display = "none";
+      msgerSend.disabled = true;
+      loader.style.display = "block";
+      msgerInput.placeholder = "Loading...";
       msgerInput.value = "";
+      addButton.style.display = "none";
+      addButton.disabled = true;
+      
       botResponse2(msgText);
     });
 
@@ -80,7 +91,14 @@
       msgerInput.disabled = true;
 
       appendMessageHuman(PERSON_NAME, PERSON_IMG, "right", msgText);
+      msgerInput.disabled = true;
+      msgerSend.style.display = "none";
+      msgerSend.disabled = true;
+      loader.style.display = "block";
+      msgerInput.placeholder = "Loading...";
       msgerInput.value = "";
+      addButton.style.display = "none";
+      addButton.disabled = true;
       botResponse(msgText);
     });
 
@@ -148,6 +166,12 @@
         const source = data["source"];
         appendMessage(BOT_NAME, BOT_IMG, "left", answer, source);
         msgerInput.disabled = false;
+        msgerSend.disabled = false;
+        loader.style.display = "none";
+        msgerSend.style.display = "block";
+        msgerInput.placeholder = "Enter your message...";
+        addButton.style.display = "block";
+        addButton.disabled = false;
       })
       .catch((error) => {
         console.error("Error:", error);
@@ -173,6 +197,12 @@ function botResponse2(rawText) {
         console.log(data);
         appendMessage(BOT_NAME, BOT_IMG, "left", data["answer"], "");
         msgerInput.disabled = false;
+        msgerSend.disabled = false;
+        loader.style.display = "none";
+        msgerSend.style.display = "block";
+        msgerInput.placeholder = "Enter your message...";
+        addButton.style.display = "block";
+        addButton.disabled = false;
       })
       .catch((error) => {
         console.error("Error:", error);

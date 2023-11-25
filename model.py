@@ -12,6 +12,7 @@ import torch
 
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
+import ingest
 
 # LLMChain: This chain uses a Language Model for generating responses to queries or prompts. 
 # It can be used for various tasks such as chatbots, summarization, and more
@@ -159,9 +160,17 @@ def get_bot_response():
 
 @app.route("/get2")
 def get_bot_response2():
-    data = {
-        "answer" : "Hello"
-    }
+    link = request.args.get("msg")
+    data = {}
+    if ingest.addLink(link):
+        ingest.createVectorDB(link)
+        data = {
+            "answer" : "Sucess!"
+        }
+    else:
+        data = {
+            "answer" : "Failed :("
+        }
     return data
 
 if __name__ == "__main__":
