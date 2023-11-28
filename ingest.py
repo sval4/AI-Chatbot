@@ -90,7 +90,6 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
         if href and href[-1] == "/":
             href = href[0:len(href)-1]
             
-
         # Filter out specific types of URLs based on certain conditions
         if href and "http" in href:
             continue
@@ -150,7 +149,6 @@ def listOfCenters(browser, headers):
     for link in master_links:
         # Get the 'href' attribute from each link
         href = link.get('href')
-
         
         # Check if the link points to a PDF file
         if href and ".pdf" in href:
@@ -195,6 +193,19 @@ def listOfCenters(browser, headers):
 
 def addLink(link):
     global master_links
+    global current_base_link
+    left = link.find("://")
+    right = link.rfind("/")
+    count = link.count("/")
+    
+    if right == -1:
+        current_base_link = link[left + 3:]
+    else:
+        if right != len(link) - 1 and count > 3:
+            print("Invalid URL")
+            return False
+        current_base_link = link[left + 3: right]
+
     try:
         page = browser.get(link, headers=headers, timeout=5)
     except Exception as e:
@@ -203,20 +214,13 @@ def addLink(link):
     # Find all anchor elements on the webpage
     links = page.soup.find_all('a')
     links += page.soup.find_all('link')
-    for link in links:
-        master_links.add(link)
+    for link1 in links:
+        master_links.add(link1)
     master_links = master_links.difference(processed_links)
     return True
 
 
 def createVectorDB(link):
-    global current_base_link
-    left = link.find("://")
-    right = link.rfind("/")
-    if right == -1:
-        current_base_link = link[left + 3:]
-    else:
-        current_base_link = link[left + 3: right]
     # Fetch information on centers from the specified website
     infoTuple = listOfCenters(browser, headers)
 

@@ -10,10 +10,6 @@ Run ingest.py in a linux terminal in order to first create the vector store loca
 + pypdf
 + langchain
 + torch
-+ accelerate
-+ bitsandbytes
-+ transformers
-+ sentence_transformers
 + faiss_cpu
 + chainlit
 + flask
