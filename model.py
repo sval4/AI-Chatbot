@@ -71,15 +71,6 @@ def loadLLM():
     return llm
 
 def retrievalQAChain(llm, prompt, db):
-    # memory = ConversationTokenBufferMemory(llm=llm, memory_key="chat_history", return_messages=True, input_key="question", max_token_limit=512)
-    # qa_chain = RetrievalQA.from_chain_type(
-    #     llm=llm, chain_type="stuff", retriever=db.as_retriever(search_kwargs={"k": 1}), return_source_documents = True, 
-    #     chain_type_kwargs={
-    #         "verbose": False,
-    #         "prompt": prompt,
-    #         "memory": memory,
-    #     }, verbose=True
-    # )
     qa_chain = ConversationalRetrievalChain.from_llm(
         llm=llm, 
         chain_type="stuff", 
@@ -107,6 +98,13 @@ def qaBot():
 def finalResult(query):
     qa_result = qaBot()
     chat_history = []
+    # Will be query if using RetrievalQA, question for ConversationalQA
+    response = qa_result({'chat_history': chat_history, 'question': query})
+    print()
+    return response
+
+
+def askBot(query, qa_result, chat_history):
     # Will be query if using RetrievalQA, question for ConversationalQA
     response = qa_result({'chat_history': chat_history, 'question': query})
     print()
@@ -144,6 +142,9 @@ app = Flask(__name__)
 app.static_folder = "static"
 CORS(app)
 
+qa_result = qaBot()
+chat_history = []
+
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -151,7 +152,7 @@ def home():
 @app.route("/get")
 def get_bot_response():
     prompt = request.args.get("msg")
-    answer = finalResult(prompt)
+    answer = askBot(prompt, qa_result, chat_history)
     data = {
         "answer" : answer["answer"],
         "source" : answer["source_documents"][0].metadata["source"]
@@ -171,6 +172,7 @@ def get_bot_response2():
         data = {
             "answer" : "Failed :("
         }
+    qa_result = qaBot()
     return data
 
 if __name__ == "__main__":
