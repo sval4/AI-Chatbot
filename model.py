@@ -1,13 +1,11 @@
-from langchain import PromptTemplate
+from langchain.prompts import PromptTemplate
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.llms import CTransformers
 from langchain.chains import RetrievalQA #This is just a retrieval chain, for chat history use conversational retrieval chain
 from langchain.chains import ConversationalRetrievalChain
-from langchain.memory  import ConversationTokenBufferMemory
 
 from typing import Dict, Any
-import chainlit as cl
 import torch
 
 from flask import Flask, render_template, request, jsonify
@@ -110,34 +108,6 @@ def askBot(query, qa_result, chat_history):
     print()
     return response
 
-
-@cl.on_chat_start
-async def start():
-    bot = qaBot()
-    await cl.Message(content="Hello, Welcome to the ChatBot. What is your question?").send()
-    cl.user_session.set("chatbot", bot)
-
-@cl.on_message
-async def main(message):
-    bot = cl.user_session.get("chatbot")
-    cb = cl.AsyncLangchainCallbackHandler(stream_final_answer=True, answer_prefix_tokens=["FINAL", "ANSWER"])
-    chat_history = []
-    result = await bot.acall({'chat_history': chat_history, 'question': message}, callbacks=[cb])
-    # Will be result["result"] if using RetrievalQA result["answer"] for ConversationalQA
-    answer = result["answer"]
-    sources = result["source_documents"]
-
-    if sources:
-        answer += f"\n\nSources:" + str(sources)
-    else:
-        answer += f"\n\nNo Sources Found"
-    
-
-    await cl.Message(content=answer).send()
-
-
-#This is how to run with chainlit: chainlit run model.py -w
-
 app = Flask(__name__)
 app.static_folder = "static"
 CORS(app)
@@ -176,4 +146,4 @@ def get_bot_response2():
     return data
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

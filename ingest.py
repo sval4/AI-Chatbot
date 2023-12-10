@@ -10,9 +10,7 @@ import requests
 import mechanicalsoup
 from bs4 import BeautifulSoup
 import time
-import xml.etree.ElementTree as ET
 import os
-import csv
 
 
 DEVICE = "cpu"
