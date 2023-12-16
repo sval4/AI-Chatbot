@@ -20,8 +20,9 @@ if torch.cuda.is_available():
 DB_FAISS_PATH = "vectorstores/db_faiss"
 
 
-master_links = set() #Keep track of all links that have been added
-processed_links = set()
+master_links = set() #Keep track of all the initial links in the base url webpage
+processed_links = set() #Keep track of all links that have been added into the vector db
+processed_PDF_links = set() #Keep track of all the pdf links that have been added into the vector db
 
 current_base_link = ""
 
@@ -74,8 +75,6 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
         setOfWrongLinks.add(url) 
         return 
 
-    time.sleep(delay) 
-
     # Find all anchor and link elements on the page and gather their 'href' attributes
     links = page.soup.find_all('a')
     links += page.soup.find_all('link')
@@ -110,6 +109,8 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
                 continue
 
             if link and ".pdf" in link:
+                if link in processed_PDF_links:
+                    continue
                 # Download the PDF content
                 response = requests.get(href)
                 with open("temp.pdf", "wb") as f:
@@ -150,8 +151,11 @@ def listOfCenters(browser, headers):
         
         # Check if the link points to a PDF file
         if href and ".pdf" in href:
+            if href in processed_PDF_links:
+                continue
             # Download the PDF content
             response = requests.get(href)
+            processed_PDF_links.add(href)
             with open("temp.pdf", "wb") as f:
                 f.write(response.content)
 
@@ -192,6 +196,7 @@ def listOfCenters(browser, headers):
 def addLink(link):
     global master_links
     global current_base_link
+    global processed_PDF_links
     left = link.find("://")
     right = link.rfind("/")
     count = link.count("/")
@@ -215,6 +220,7 @@ def addLink(link):
     for link1 in links:
         master_links.add(link1)
     master_links = master_links.difference(processed_links)
+    master_links = master_links.difference(processed_PDF_links)
     return True
 
 
@@ -224,7 +230,7 @@ def createVectorDB(link):
 
     # Extract URLs and PDF documents from the fetched information tuple
     URLs = link(infoTuple[0].union(processed_links))
-    pdfDocumentList = infoTuple[1]
+    pdfDocumentList = link(infoTuple[1].union(processed_PDF_links))
 
     # Display the extracted URLs
     print(URLs)
