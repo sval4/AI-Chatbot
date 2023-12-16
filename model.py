@@ -11,6 +11,7 @@ import torch
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import ingest
+import os
 
 # LLMChain: This chain uses a Language Model for generating responses to queries or prompts. 
 # It can be used for various tasks such as chatbots, summarization, and more
@@ -112,7 +113,10 @@ app = Flask(__name__)
 app.static_folder = "static"
 CORS(app)
 
-qa_result = qaBot()
+
+qa_result = None
+if os.path.exists(DB_FAISS_PATH):
+    qa_result = qaBot()
 chat_history = []
 
 @app.route("/")
@@ -121,6 +125,7 @@ def home():
 
 @app.route("/get")
 def get_bot_response():
+    global qa_result
     prompt = request.args.get("msg")
     answer = askBot(prompt, qa_result, chat_history)
     data = {
@@ -131,12 +136,13 @@ def get_bot_response():
 
 @app.route("/get2")
 def get_bot_response2():
+    global qa_result
     link = request.args.get("msg")
     data = {}
     if ingest.addLink(link):
         ingest.createVectorDB(link)
         data = {
-            "answer" : "Sucess!"
+            "answer" : "Success!"
         }
     else:
         data = {
@@ -147,3 +153,5 @@ def get_bot_response2():
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+    #Need to do Add button before send if the vector db path does not exist

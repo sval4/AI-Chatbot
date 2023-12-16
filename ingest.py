@@ -22,7 +22,7 @@ DB_FAISS_PATH = "vectorstores/db_faiss"
 
 master_links = set() #Keep track of all the initial links in the base url webpage
 processed_links = set() #Keep track of all links that have been added into the vector db
-processed_PDF_links = set() #Keep track of all the pdf links that have been added into the vector db
+processed_PDFs = set() #Keep track of all the pdf links that have been added into the vector db
 
 current_base_link = ""
 
@@ -51,6 +51,7 @@ None
 """
 def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser, headers, level, documentList):
     global processed_links
+    global processed_PDFs
     # Define the maximum level of page traversal
     max_level = 1
     delay = 2
@@ -105,12 +106,10 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
             else:
                 link = base_url + href
 
-            if link in setOfWrongLinks or link in setOfInsideLinks or current_base_link not in link:
+            if link in setOfWrongLinks or link in setOfInsideLinks or current_base_link not in link or link in processed_links:
                 continue
 
             if link and ".pdf" in link:
-                if link in processed_PDF_links:
-                    continue
                 # Download the PDF content
                 response = requests.get(href)
                 with open("temp.pdf", "wb") as f:
@@ -129,7 +128,7 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
                 os.remove("temp.pdf")
 
                 # Append the extracted text as a Document object to the document list
-                documentList.append(Document(page_content=text.replace("\n", "").replace("\x00", "f"), metadata={"source": href}))
+                documentList.add(Document(page_content=text.replace("\n", "").replace("\x00", "f"), metadata={"source": href}))
                 setOfInsideLinks.add(link)
                 continue
             
@@ -140,9 +139,11 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
 
 
 
-def listOfCenters(browser, headers):
+def startingLinks(browser, headers):
+    global processed_links
+    global processed_PDFs
     listOfCenters = set()
-    documentList = []
+    documentList = set()
 
     # Iterate through all found links
     for link in master_links:
@@ -151,11 +152,8 @@ def listOfCenters(browser, headers):
         
         # Check if the link points to a PDF file
         if href and ".pdf" in href:
-            if href in processed_PDF_links:
-                continue
             # Download the PDF content
             response = requests.get(href)
-            processed_PDF_links.add(href)
             with open("temp.pdf", "wb") as f:
                 f.write(response.content)
 
@@ -172,16 +170,15 @@ def listOfCenters(browser, headers):
             os.remove("temp.pdf")
 
             # Append the extracted text as a Document object to the document list
-            documentList.append(Document(page_content=text.replace("\n", "").replace("\x00", "f"), metadata={"source": href}))
+            documentList.add(Document(page_content=text.replace("\n", "").replace("\x00", "f"), metadata={"source": href}))
 
         # Check for other types of links excluding certain domains and resources
         elif href and "http" in href:
-            if current_base_link not in href:
+            if current_base_link not in href or href in processed_links:
                 continue
             # Initialize sets for inside and wrong links
             setOfInsideLinks = set()
             setOfWrongLinks = set()
-            setOfInsideLinks.add(href)
             
             # Fetch all links within the current link recursively using a helper function
             getAllLinksInPage(href, href, setOfInsideLinks, setOfWrongLinks, browser, headers, 0, documentList)
@@ -189,18 +186,19 @@ def listOfCenters(browser, headers):
             # Union of unique inside links with the overall set of centers
             listOfCenters = listOfCenters.union(setOfInsideLinks)
 
-    # Return the list of unique center links and extracted documents
-    return (listOfCenters, documentList)
+    processed_links = listOfCenters.union(processed_links)
+    processed_PDFs = documentList.union(processed_PDFs)
 
 
 def addLink(link):
     global master_links
     global current_base_link
-    global processed_PDF_links
+    global processed_PDFs
     left = link.find("://")
     right = link.rfind("/")
     count = link.count("/")
     
+    master_links = set()
     if right == -1:
         current_base_link = link[left + 3:]
     else:
@@ -220,27 +218,22 @@ def addLink(link):
     for link1 in links:
         master_links.add(link1)
     master_links = master_links.difference(processed_links)
-    master_links = master_links.difference(processed_PDF_links)
     return True
 
 
 def createVectorDB(link):
     # Fetch information on centers from the specified website
-    infoTuple = listOfCenters(browser, headers)
-
-    # Extract URLs and PDF documents from the fetched information tuple
-    URLs = link(infoTuple[0].union(processed_links))
-    pdfDocumentList = link(infoTuple[1].union(processed_PDF_links))
+    startingLinks(browser, headers)
 
     # Display the extracted URLs
-    print(URLs)
+    print(processed_links)
 
     # Load unstructured data from URLs using a specific set of headers
-    loaders = UnstructuredURLLoader(urls=URLs, headers=headers)
+    loaders = UnstructuredURLLoader(urls=processed_links, headers=headers)
     documents = loaders.load()
 
     # Combine loaded documents with PDF documents
-    documents += pdfDocumentList
+    documents += processed_PDFs
 
     # Replace newline characters with empty strings in all document content
     for document in documents:
