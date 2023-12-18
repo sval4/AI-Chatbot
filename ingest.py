@@ -27,6 +27,7 @@ processed_PDFs = set() #Keep track of all the pdf links that have been added int
 setOfInsideLinks = set()
 setOfWrongLinks = set()
 documentList = set()
+start_time = 0
 
 current_base_link = ""
 
@@ -56,6 +57,10 @@ None
 def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser, headers, level, documentList):
     global processed_links
     global processed_PDFs
+    global start_time
+    setOfInsideLinks.add(url)
+    if time.time() - start_time > 300:
+        raise Exception
     # Define the maximum level of page traversal
     max_level = 1
     delay = 2
@@ -68,15 +73,18 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
         # Check if the page or its content is not retrievable
         if page == None or page.soup == None:
             setOfWrongLinks.add(url)
+            setOfInsideLinks.remove(url)
             return 
         
         if page.status_code == 404:
             setOfWrongLinks.add(url)  
+            setOfInsideLinks.remove(url)
             print(f"404 Not Found: {url}")  
             return  
     except Exception as e:
         print(url) 
         print(f"{e}")  
+        setOfInsideLinks.remove(url)
         setOfWrongLinks.add(url) 
         return 
 
@@ -105,10 +113,13 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
             # Construct the absolute link from the base URL and extracted href
             if href[0] != "/" and base_url[-1] != "/":
                 link = base_url + "/" + href
+                # print("link1: ", base_url, "/", href)
             elif href[0] == "/" and base_url[-1] == "/":
                 link = base_url + href[1:]
+                # print("link2: ", base_url, href[1:])
             else:
                 link = base_url + href
+                # print("link3: ", base_url, href)
 
             if link in setOfWrongLinks or link in setOfInsideLinks or current_base_link not in link or link in processed_links:
                 continue
@@ -138,11 +149,10 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
             
             # If the current traversal level is less than the maximum level, continue extracting links recursively
             if level < max_level:
+                print(link)
                 getAllLinksInPage(base_url, link, setOfInsideLinks, setOfWrongLinks, browser, headers, level + 1, documentList)
-            setOfInsideLinks.add(link)
 
 
-@timeout(300)
 def startingLinks(browser, headers):
     global processed_links
     global processed_PDFs
@@ -183,11 +193,7 @@ def startingLinks(browser, headers):
                 continue
             
             # Fetch all links within the current link recursively using a helper function
-            getAllLinksInPage(href, href, setOfInsideLinks, setOfWrongLinks, browser, headers, 0, documentList)
-
-
-    processed_links = setOfInsideLinks.union(processed_links)
-    processed_PDFs = documentList.union(processed_PDFs)
+            getAllLinksInPage(current_base_link, href, setOfInsideLinks, setOfWrongLinks, browser, headers, 0, documentList)
 
 
 def addLink(link):
@@ -200,12 +206,12 @@ def addLink(link):
     
     master_links = set()
     if right == -1:
-        current_base_link = link[left + 3:]
+        current_base_link = link[0:left+3] + link[left + 3:]
     else:
         if right != len(link) - 1 and count > 3:
             print("Invalid URL")
             return False
-        current_base_link = link[left + 3: right]
+        current_base_link = link[0:left+3] + link[left + 3: right]
 
     try:
         page = browser.get(link, headers=headers, timeout=5)
@@ -227,12 +233,16 @@ def createVectorDB(link):
     global setOfWrongLinks
     global processed_links
     global processed_PDFs
+    global start_time
     # Fetch information on centers from the specified website
+
+    start_time = time.time()
     try:
         startingLinks(browser, headers)
-    except TimeoutError:
-        processed_links = setOfInsideLinks.union(processed_links)
-        processed_PDFs = documentList.union(processed_PDFs)
+    except Exception:
+        print("Time limit reached")
+    processed_links = setOfInsideLinks.union(processed_links)
+    processed_PDFs = documentList.union(processed_PDFs)
 
 
     # Display the extracted URLs
