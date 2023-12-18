@@ -8,7 +8,7 @@ WORKDIR /app
 COPY . /app
 
 # Install necessary dependencies
-RUN pip install --no-cache-dir torch flask flask_cors langchain bs4 PyPDF2 requests mechanicalsoup sentence_transformers ctransformers faiss-cpu
+RUN pip install --no-cache-dir torch flask flask_cors langchain bs4 PyPDF2 requests mechanicalsoup sentence_transformers ctransformers timeout_decorator faiss-cpu
 
 ENV PORT=5000
 

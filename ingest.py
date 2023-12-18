@@ -3,6 +3,7 @@ from langchain.document_loaders import PyPDFLoader, DirectoryLoader, CSVLoader, 
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.docstore.document import Document
+from timeout_decorator import timeout
 
 import PyPDF2
 import torch
@@ -23,6 +24,9 @@ DB_FAISS_PATH = "vectorstores/db_faiss"
 master_links = set() #Keep track of all the initial links in the base url webpage
 processed_links = set() #Keep track of all links that have been added into the vector db
 processed_PDFs = set() #Keep track of all the pdf links that have been added into the vector db
+setOfInsideLinks = set()
+setOfWrongLinks = set()
+documentList = set()
 
 current_base_link = ""
 
@@ -129,7 +133,7 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
 
                 # Append the extracted text as a Document object to the document list
                 documentList.add(Document(page_content=text.replace("\n", "").replace("\x00", "f"), metadata={"source": href}))
-                setOfInsideLinks.add(link)
+                setOfWrongLinks.add(link)
                 continue
             
             # If the current traversal level is less than the maximum level, continue extracting links recursively
@@ -138,12 +142,13 @@ def getAllLinksInPage(base_url, url, setOfInsideLinks, setOfWrongLinks, browser,
             setOfInsideLinks.add(link)
 
 
-
+@timeout(300)
 def startingLinks(browser, headers):
     global processed_links
     global processed_PDFs
-    listOfCenters = set()
-    documentList = set()
+    global documentList
+    global setOfInsideLinks
+    global setOfWrongLinks
 
     # Iterate through all found links
     for link in master_links:
@@ -174,19 +179,14 @@ def startingLinks(browser, headers):
 
         # Check for other types of links excluding certain domains and resources
         elif href and "http" in href:
-            if current_base_link not in href or href in processed_links:
+            if current_base_link not in href or href in processed_links or href in setOfInsideLinks or href in setOfWrongLinks:
                 continue
-            # Initialize sets for inside and wrong links
-            setOfInsideLinks = set()
-            setOfWrongLinks = set()
             
             # Fetch all links within the current link recursively using a helper function
             getAllLinksInPage(href, href, setOfInsideLinks, setOfWrongLinks, browser, headers, 0, documentList)
-            
-            # Union of unique inside links with the overall set of centers
-            listOfCenters = listOfCenters.union(setOfInsideLinks)
 
-    processed_links = listOfCenters.union(processed_links)
+
+    processed_links = setOfInsideLinks.union(processed_links)
     processed_PDFs = documentList.union(processed_PDFs)
 
 
@@ -220,10 +220,20 @@ def addLink(link):
     master_links = master_links.difference(processed_links)
     return True
 
-
+# Assume add link has been called before this
 def createVectorDB(link):
+    global documentList
+    global setOfInsideLinks
+    global setOfWrongLinks
+    global processed_links
+    global processed_PDFs
     # Fetch information on centers from the specified website
-    startingLinks(browser, headers)
+    try:
+        startingLinks(browser, headers)
+    except TimeoutError:
+        processed_links = setOfInsideLinks.union(processed_links)
+        processed_PDFs = documentList.union(processed_PDFs)
+
 
     # Display the extracted URLs
     print(processed_links)
@@ -251,3 +261,7 @@ def createVectorDB(link):
 
     # Save the FAISS database locally
     db.save_local(DB_FAISS_PATH)
+
+    documentList.clear()
+    setOfInsideLinks.clear()
+    setOfWrongLinks.clear()
