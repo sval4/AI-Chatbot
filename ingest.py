@@ -3,7 +3,6 @@ from langchain.document_loaders import PyPDFLoader, DirectoryLoader, CSVLoader, 
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.docstore.document import Document
-from timeout_decorator import timeout
 
 import PyPDF2
 import torch

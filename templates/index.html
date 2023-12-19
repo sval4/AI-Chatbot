@@ -13,6 +13,26 @@
 </head>
 
 <body>
+  <button id="info-button">Info</button>
+
+  <!-- Info Panel -->
+  <div id="info-panel">
+    <button id="close-button" onclick="closeInfoPanel()">X</button>
+    <h2>Project Description</h2>
+    <p>This is a chatbot project.
+      This is a chatbot project.
+      This is a chatbot project.
+      This is a chatbot project.
+      This is a chatbot project.
+      This is a chatbot project.
+      This is a chatbot project.
+      This is a chatbot project.
+      This is a chatbot project.
+
+
+    </p>
+  </div>
+
   <!-- partial:index.partial.html -->
   <section class="msger">
     <header class="msger-header">
@@ -149,7 +169,7 @@
       msgerChat.scrollTop += 500;
     }
 
-    function botResponse(rawText) {
+  function botResponse(rawText) {
     // Bot Response
     fetch(`/get?msg=${encodeURIComponent(rawText)}`, {
       method: "GET",
@@ -182,7 +202,7 @@
   
   
 
-function botResponse2(rawText) {
+  function botResponse2(rawText) {
     // Bot Response
     fetch(`/get2?msg=${encodeURIComponent(rawText)}`, {
       method: "GET",
@@ -228,8 +248,16 @@ function botResponse2(rawText) {
 
     document.querySelector('.msg-info-time').innerHTML = formatDate(new Date());
 
+    const infoButton = document.getElementById("info-button");
+    const infoPanel = document.getElementById("info-panel");
 
+    infoButton.addEventListener("click", () => {
+      infoPanel.style.display = "block";
+    });
 
+    function closeInfoPanel() {
+      infoPanel.style.display = "none";
+    }
   </script>
 
 </body>
